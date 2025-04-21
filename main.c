@@ -87,40 +87,62 @@ const char* header_content_length = "\r\nContent-Length:";
 const char* body_empty       = "";
 /******************************  ******************************/
 
+typedef struct buffer_struct {
+    char* request_method;
+    char* request_target;
+    char* http_version;
+    char* host;
+    char* user_agent;
+    char* accept;
+} buffer_struct;
+
+
 void disable_output_buffering(void) {
     // Disable output buffering
     setbuf(stdout, NULL);	
     setbuf(stderr, NULL);
 }
 
-void process_request_buffer(char request_buffer[1024]) {
-    printf("LOG____PRB()____Request Buffer: %s", request_buffer);
-    char* request_buffer_pointer = request_buffer;
-    char* array[3];
+//void process_request_buffer(char request_buffer[1024]) {
+//void process_request_buffer(buffer_struct* request_buffer_struct, char request_buffer[1024]) {
+void process_request_buffer(struct buffer_struct *request_buffer_struct, char request_buffer[1024]) {
+    regex_t regex;
+    int reti;
+    // try to implement regex here
+
+
+    printf("LOG____PRB()____Request Buffer: %s\n", request_buffer);
+    //char* request_buffer_pointer = request_buffer;
+    char* save_pointer;
+    //char* array[6];
+    //char* array[4];
+    //char* array = (char*)malloc(6 * sizeof(char));
     // Array Contents:
     // array[0] = request method
     // array[1] = request target
     // array[2] = HTTP Version
-    //array[0] = strtok(request_buffer, " "); // first token will be request method
-    array[0] = strtok_r(request_buffer_pointer, " ", &request_buffer_pointer); // first token will be request method
-    printf("LOG____PRB()____Request Method: %s\n", array[0]);
-    //array[1] = strtok(NULL, " "); // second token will be request target
-    array[1] = strtok_r(request_buffer_pointer, " ", &request_buffer_pointer); // first token will be request method
-    printf("LOG____PRB()____Request Target: %s\n", array[1]);
-    //array[2] = strtok(NULL, " "); // third token will be HTTP Version
-    //printf("LOG____PRB()____HTTP Version: %s\n", array[2]);
-    //char* first_strtok = strtok(NULL, "\r\n");
-    //printf("LOG____PRB()____First STRTOK: %s\n", first_strtok);
-    //char* second_strtok = strtok(NULL, "\r\n");
-    //printf("LOG____PRB()____Second STRTOK: %s\n", second_strtok);
-    //char* user_agent = strtok(NULL, "\r\n") + 12;
-    //printf("LOG____PRB()____User Agent: %s\n", user_agent);
+    // array[3] = Host
+    // array[4] = User-Agent	(optional - kind of)
+    // array[5] = Accept	(optional)
+    
+    char* request_method = strtok_r(request_buffer, " ", &save_pointer); // first token will be request method
+    char* request_target = strtok_r(request_buffer, " ", &save_pointer); // second token will be request target
+    char* request_http_version = strtok_r(request_buffer, " ", &save_pointer); // third token will be host
+    char* request_host = strtok_r(request_buffer, " ", &save_pointer); // third token will be host
+    request_buffer_struct->request_method = request_method;
+    request_buffer_struct->request_target = request_target;
+    request_buffer_struct->http_version = request_http_version;
+    request_buffer_struct->host = request_host;
 }
 
 void handle_request(char request_buffer[1024], int client_fd) {
-    //char* request_buffer_duplicate = strdup(request_buffer);
+    char* request_buffer_duplicate = strdup(request_buffer);
     //process_request_buffer(request_buffer_duplicate);
-    //free(request_buffer_duplicate);
+
+    struct buffer_struct request_buffer_struct;
+    process_request_buffer(&request_buffer_struct, request_buffer_duplicate);
+    //printf("LOG____struct request method: %s\n", request_buffer_struct.request_method);
+
 
     printf("LOG____Request Buffer: %s\n", request_buffer);
 
@@ -148,10 +170,9 @@ void handle_request(char request_buffer[1024], int client_fd) {
     printf("LOG____content_encoding = %s\n", content_encoding);
 
     char* request_buffer_pointer = request_buffer;
-    //char* request_method = strtok(request_buffer, " "); // first token will be request method
     char* request_method = strtok_r(request_buffer_pointer, " ", &request_buffer_pointer); // first token will be request method
-    printf("LOG____Request Method: %s\n", request_method);
-    //char* request_target = strtok(NULL, " ");		// second token will be request target
+    //printf("LOG____Request Method: %s\n", request_method);
+    printf("LOG____Request Method: %s\n", request_buffer_struct.request_method);
     char* request_target = strtok_r(request_buffer_pointer, " ", &request_buffer_pointer);		// second token will be request target
     printf("LOG____Request Target: %s\n", request_target);
 
@@ -179,11 +200,8 @@ void handle_request(char request_buffer[1024], int client_fd) {
 	}
     } 
     else if (!strcmp(request_target, "/user-agent")) {
-       	//strtok(NULL, "\r\n");
-       	//strtok(NULL, "\r\n");
        	strtok_r(request_buffer_pointer, "\r\n", &request_buffer_pointer);
        	strtok_r(request_buffer_pointer, "\r\n", &request_buffer_pointer);
-	//char* user_agent = strtok(NULL, "\r\n") + 12;
 	char* user_agent = strtok_r(request_buffer_pointer, "\r\n", &request_buffer_pointer) + 12;
 	sprintf(response_buffer, response_template, strlen(user_agent), user_agent);
 	send(client_fd, response_buffer, strlen(response_buffer), no_flags);
@@ -222,14 +240,9 @@ void handle_request(char request_buffer[1024], int client_fd) {
 	else if (!strcmp(request_method, "POST")) {
 	    strtok_r(request_buffer_pointer, "\r\n", &request_buffer_pointer);
 	    strtok_r(request_buffer_pointer, "\r\n", &request_buffer_pointer);
-	    //strtok(NULL, "\r\n");
-	    //strtok(NULL, "\r\n");
-	    //char* request_body_length = strtok(NULL, "\r\n");
 	    char* request_body_length = strtok_r(request_buffer_pointer, "\r\n", &request_buffer_pointer);
 	    printf("LOG___Request Body Length: %s\n", request_body_length + 16);
-	    //strtok(NULL, "\r\n");
 	    strtok_r(request_buffer_pointer, "\r\n", &request_buffer_pointer);
-	    //char* request_body = strtok(NULL, "\r\n");
 	    char* request_body = strtok_r(request_buffer_pointer, "\r\n", &request_buffer_pointer);
 	    printf("LOG___Request Body: %s\n", request_body);
 	    // i'm thinking either FILE *file_fd = fopen(file_path, "r"); above is not the best name, or this below isn't, will look into it
@@ -243,6 +256,8 @@ void handle_request(char request_buffer[1024], int client_fd) {
     else {
 	send(client_fd, response_buffer_404_NF, strlen(response_buffer_404_NF), no_flags);
     }
+    // All members of the struct buffer_struct assigned in process_request_buffer() will be invalid after this call
+    free(request_buffer_duplicate);
 }
 
 // must take void* as an argument and return void*, to be made into a thread
