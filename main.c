@@ -57,8 +57,12 @@
  *
  * */
 
-/********************* Reponse Definitions *********************/
+/********************* CodeCrafters Values *********************/
 const char* test_directory = "/tmp/data/codecrafters.io/http-server-tester/";
+const char* type_octet = "\r\nContent-Type: application/octet-stream\r\n";
+//const char* type_octet = "\r\nContent-Type: application/octet-stream\r\n";
+const char* new_file_path_template = "/tmp/data/codecrafters.io/http-server-tester/%s";
+/******************************  ******************************/
 
 /********************* Reponse Definitions *********************/
 // Define a 200 response indicating that the connection succeeded
@@ -69,9 +73,10 @@ const char* response_buffer_201_Created = "HTTP/1.1 201 Created\r\n\r\n";
 const char* response_buffer_404_NF = "HTTP/1.1 404 Not Found\r\n\r\n";
 // Define an int with value 0 to be used when we don't want to include any flags
 const int no_flags = 0;
+/******************************  ******************************/
 
 /********************** Reponse Building **********************/
-const char* http_version_1_1 = "HTTP/1.1";
+const char* http_1_1 = "HTTP/1.1";
 
 const char* status_code_200  = "200";
 const char* status_code_201  = "201";
@@ -84,6 +89,8 @@ const char* reason_phrase_no = " \r\n";
 const char* headers_none     = "\r\n";
 const char* header_content_encoding = "\r\nContent-Encoding:";
 const char* header_content_encoding_gzip = "\r\nContent-Encoding: gzip";
+
+const char* text_plain = "Content-Type: text/plain\r\n";
 
 const char* header_content_length = "\r\nContent-Length:";
 
@@ -112,11 +119,7 @@ void disable_output_buffering(void) {
 // gzip_compress will take: a pointer to the body we want to compress, the size of the body, and the 
 static char* gzip_deflate(char* input, size_t input_length, size_t* output_length) {
     printf("LOG____deflate\n");
-    // Initialize a z_stream structure to manage the compression process
     z_stream stream = {0};
-    // (stream, compression level, compression algorithm, window size 15 bit + 16 bits enabling gzip header/footer for metadata
-    // compression strategy)
-    //deflateInit2(&stream, Z_DEFAULT_COMPRESSION, Z_DEFLATED, 0x1F, 8, Z_DEFAULT_STRATEGY);
     deflateInit2(&stream, Z_DEFAULT_COMPRESSION, Z_DEFLATED, 31, 8, Z_DEFAULT_STRATEGY);
 
     size_t max_length = deflateBound(&stream, input_length);
@@ -149,10 +152,9 @@ void process_request_buffer(struct buffer_struct *request_buffer_struct, char re
     char* target = strtok_r(request_buffer, " ", &request_buffer); // second token will be request target
     char* http_version = strtok_r(request_buffer, "\r\n", &request_buffer); // third token will be host
     char* host = strtok_r(request_buffer, "\r\n", &request_buffer); // third token will be host
-
     char* user_agent = strtok_r(request_buffer, "\r\n", &request_buffer);
-    //	unfortunately user_agent for /user-agent request will also have to be:
-    //	request_body_length for post requests
+    //	unfortunately user_agent for /user-agent requests will also have to be:
+    //	body_length for post requests
     strtok_r(request_buffer, "\r\n", &request_buffer);
     char* body = strtok_r(request_buffer, "\r\n", &request_buffer);
 
@@ -201,22 +203,26 @@ void handle_request(char request_buffer[1024], int client_fd) {
     struct buffer_struct request_buffer_struct;
     process_request_buffer(&request_buffer_struct, request_buffer_duplicate);
 
-    //printf("LOG____Request Buffer Struct: %s\n", request_buffer);
+    char* request_method = request_buffer_struct.method;	
+    char* request_target = request_buffer_struct.target;	
+
     printf("LOG____Request Buffer Struct->method: %s\n", request_buffer_struct.method);
     printf("LOG____Request Buffer Struct->target: %s\n", request_buffer_struct.target);
     printf("LOG____Request Buffer Struct->http_version: %s\n", request_buffer_struct.http_version);
     printf("LOG____Request Buffer Struct->host: %s\n", request_buffer_struct.host);
 
-    //int content_encoding_active;
     int* content_encoding_active = request_buffer_struct.content_encoding_active;
     char* content_encoding;
     char response_buffer[1024]; // used for "echo" and "user-agent"
     
-    // %s1 = HTTP Version ____ %s2 = Status Code ____ %s3 = Reason Phrase ____ %s4 = Headers
-    char* empty_response_template = "%s %s%s%s%s";
-    char* response_template       = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %zu\r\n\r\n%s";
-    char* gzip_response_template  = "HTTP/1.1 200 OK\r\nContent-Type: text/plain%sContent-Length: %zu\r\n\r\n%s";
-    char* file_response_template  = "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: %zu\r\n\r\n%s";
+
+    //char* empty_response_template = "%s %s%s%s%s"; // used if request target is /
+    char* response_template  = "HTTP/1.1 200 OK%s%sContent-Length: %zu\r\n\r\n%s";
+    char* request_buffer_pointer = request_buffer;
+    char* echo_message = request_target + 6;
+    char* user_agent = request_buffer_struct.user_agent + 12;
+    char* request_body = request_buffer_struct.body;
+    char* file_name = request_target + 7;
     
     // Detect gzip as an accepted encoding
     if (strstr(request_buffer, "Accept-Encoding:") != NULL && strstr(request_buffer, "gzip") != NULL) {
@@ -226,28 +232,15 @@ void handle_request(char request_buffer[1024], int client_fd) {
 	printf("LOG____Client DOES NOT Accept gzip\n");
 	content_encoding = "\r\n";
     }
-    //printf("LOG____content_encoding_active = %d\n", content_encoding_active);
-    //printf("LOG____content_encoding = %s\n", content_encoding);
-
-    char* request_method = request_buffer_struct.method;	
-    char* request_target = request_buffer_struct.target;	
-
-    char* request_buffer_pointer = request_buffer;
 
     // Updated to use Empty Response Template
     if (!strcmp(request_target, "/")) {
-	sprintf(response_buffer, empty_response_template, http_version_1_1, status_code_200, reason_phrase_OK, headers_none, body_empty);
-	printf("LOG____New Response Buffer: %s\n", response_buffer);
-	// Send HTTP response to client, send(int socket, const void *buffer, size_t length, int flags)
-	send(client_fd, response_buffer, strlen(response_buffer), no_flags);
+	send(client_fd, response_buffer_200_OK, strlen(response_buffer_200_OK), no_flags);
     }
     else if (!strncmp(request_target, "/echo/", 6)) {    
-	char* echo_message = request_target + 6;
-
 	// No content_encoding
 	if (!content_encoding_active) {
-	    sprintf(response_buffer, gzip_response_template, content_encoding, strlen(echo_message), echo_message);
-	    printf("LOG____ Echo Response Buffer Without GZIP: %s\n", response_buffer);
+	    sprintf(response_buffer, response_template, content_encoding, text_plain, strlen(echo_message), echo_message);
 	    send(client_fd, response_buffer, strlen(response_buffer), no_flags);
 	}
 	// content_encoding
@@ -255,28 +248,21 @@ void handle_request(char request_buffer[1024], int client_fd) {
 	    uLong gzip_body_length;
 	    char* gzip_response_body;
 	    gzip_response_body = gzip_deflate(echo_message, strlen(echo_message), &gzip_body_length);
-	    char* new_gzip_response_template  = "HTTP/1.1 200 OK\r\nContent-Encoding: gzip\r\nContent-Type: text/plain\r\nContent-Length: %zu\r\n\r\n";
-	    sprintf(response_buffer, new_gzip_response_template, gzip_body_length);
+	    sprintf(response_buffer, response_template, content_encoding, text_plain, gzip_body_length, body_empty);
 	    send(client_fd, response_buffer, strlen(response_buffer), no_flags);
 	    send(client_fd, gzip_response_body, gzip_body_length, no_flags);
 	}
     } 
     else if (!strcmp(request_target, "/user-agent")) {
-	char* user_agent = request_buffer_struct.user_agent + 12;
-	sprintf(response_buffer, response_template, strlen(user_agent), user_agent);
+	sprintf(response_buffer, response_template, content_encoding, text_plain, strlen(user_agent), user_agent);
 	send(client_fd, response_buffer, strlen(response_buffer), no_flags);
     }
     else if (!strncmp(request_target, "/files/", 7)) {
 	char file_path[1024];
-	char* file_name = request_target + 7;
-	char* file_path_template = "/tmp/data/codecrafters.io/http-server-tester/%s";
-	sprintf(file_path, file_path_template, file_name);
-	printf("LOG____%s\n", file_name);
-	printf("LOG____Test Directory: %s\n", test_directory);
-	printf("LOG____Filepath: %s\n", file_path);
+	sprintf(file_path, new_file_path_template, file_name);
+	printf("LOG____File Name%s\nLOG____File Path: %s\n", file_name, file_path);
 
 	if (!strcmp(request_method, "GET")) {
-	    // create file descriptor for requested file
 	    FILE *file_fd = fopen(file_path, "r");
 	
 	    if (file_fd == NULL) {
@@ -287,25 +273,18 @@ void handle_request(char request_buffer[1024], int client_fd) {
 		int file_read_syze_bites = fread(file_read_buffer, 1, 1024, file_fd);
 	    
 		if (file_read_syze_bites > 0) {
-		    sprintf(response_buffer, file_response_template, file_read_syze_bites, file_read_buffer);
+		    sprintf(response_buffer, response_template, "", type_octet, file_read_syze_bites, file_read_buffer);
 		    send(client_fd, response_buffer, strlen(response_buffer), no_flags);
 		}
 		else {
 		    send(client_fd, response_buffer_404_NF, strlen(response_buffer_404_NF), no_flags);
 		}
 	    }
-	    // i think i need this here, maybe higher actually
 	    fclose(file_fd);
 	}
 	else if (!strcmp(request_method, "POST")) {
-	    printf("LOG____Request Body Length: %s\n", request_buffer_struct.user_agent + 16);
-	    char* request_body = request_buffer_struct.body;
-	    printf("LOG____Request Body: %s\n", request_body);
-
-	    // i'm thinking either FILE *file_fd = fopen(file_path, "r"); above is not the best name, or this below isn't, will look into it
 	    FILE *file_pointer = fopen(file_path, "w");
 	    fprintf(file_pointer, request_body);
-	    // i think i need this here
 	    fclose(file_pointer);
 	    send(client_fd, response_buffer_201_Created, strlen(response_buffer_201_Created), no_flags);
 	}
@@ -320,13 +299,11 @@ void handle_request(char request_buffer[1024], int client_fd) {
 // must take void* as an argument and return void*, to be made into a thread
 void* handle_client(void* arg_client_fd) {
     int client_fd = *((int*)arg_client_fd);
-
     // Create a request buffer to accept the request to be received by recv()
     char request_buffer[1024];
 
     // recv(int socket, void *buffer, size_t length, int flags), returns ssize_t of message length
     recv(client_fd, request_buffer, 1024, no_flags);
-
     handle_request(request_buffer, client_fd);
 }
 
@@ -350,21 +327,7 @@ int main(int argc, char **argv) {
 	return 1;
     }
 
-    /* *
-     * Socket configuration
-     * sin_family: which address family to use (for struct sockaddr_in, actually must always be AF_INET)
-     * sin_port: which port number to use for the server
-     * sin_addr: IPv4 Address
-     *
-     * htons(uint16_t hostshort):
-     * 		Converts a short integer from host byte order to network byte order. Returns translated short integer
-     * 		Network byte order means that the most significant byte comes first
-     * htonl(uint32_t hostlong):
-     * 		Converts a long integer from host byte order to network byte order. Returns translated long integer
-     *
-     * AF_INET: using IPv4 (as opposed to IPv6)
-     * INADDR_ANY: Server will listen at any interface (i.e. accept connections/packets from all interfaces) 
-     */
+    // Configure socket
     struct sockaddr_in serv_addr = { 
 	.sin_family = AF_INET,
 	.sin_port = htons(4221),
@@ -401,11 +364,9 @@ int main(int argc, char **argv) {
 	// Create a thread for handle_client()
 	pthread_t thread_id;
 	pthread_create(&thread_id, NULL, handle_client, (void*)client_fd);
-	//pthread_create(&thread_id, NULL, handle_client, (void*)client_fd, (void*)directory_path);
 	pthread_detach(thread_id);
 
     }
-    // (1) free() here
     if (client_fd) { free(client_fd); }
     
     // Close the server file descriptor
