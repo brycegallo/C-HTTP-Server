@@ -111,6 +111,7 @@ void disable_output_buffering(void) {
 
 // gzip_compress will take: a pointer to the body we want to compress, the size of the body, and the 
 static char* gzip_deflate(char* input, size_t input_length, size_t* output_length) {
+    printf("LOG____deflate\n");
     // Initialize a z_stream structure to manage the compression process
     z_stream stream = {0};
     // (stream, compression level, compression algorithm, window size 15 bit + 16 bits enabling gzip header/footer for metadata
@@ -137,46 +138,53 @@ static char* gzip_deflate(char* input, size_t input_length, size_t* output_lengt
 }
 
 void process_request_buffer(struct buffer_struct *request_buffer_struct, char request_buffer[1024]) {
-    // Use strtok_r() for method, target, http_version, host, since these will always be present
-    char* save_pointer;
-    char* method = strtok_r(request_buffer, " ", &request_buffer); // first token will be request method
-    char* target = strtok_r(request_buffer, " ", &request_buffer); // second token will be request target
-    char* http_version = strtok_r(request_buffer, "\r\n", &request_buffer); // third token will be host
-    char* host = strtok_r(request_buffer, "\r\n", &request_buffer); // third token will be host
-    request_buffer_struct->method = method;
-    request_buffer_struct->target = target;
-    request_buffer_struct->http_version = http_version;
-    request_buffer_struct->host = host;
-
     // Detect gzip as an accepted encoding
     if (strstr(request_buffer, "Accept-Encoding:") != NULL && strstr(request_buffer, "gzip") != NULL) {
 	request_buffer_struct->content_encoding_active = (int*)1;
     } else {
 	request_buffer_struct->content_encoding_active = (int*)0;
     }
+    // Use strtok_r() for method, target, http_version, host, since these will always be present
+    char* method = strtok_r(request_buffer, " ", &request_buffer); // first token will be request method
+    char* target = strtok_r(request_buffer, " ", &request_buffer); // second token will be request target
+    char* http_version = strtok_r(request_buffer, "\r\n", &request_buffer); // third token will be host
+    char* host = strtok_r(request_buffer, "\r\n", &request_buffer); // third token will be host
+
+    char* user_agent = strtok_r(request_buffer, "\r\n", &request_buffer);
+    //	unfortunately user_agent for /user-agent request will also have to be:
+    //	request_body_length for post requests
+    strtok_r(request_buffer, "\r\n", &request_buffer);
+    char* body = strtok_r(request_buffer, "\r\n", &request_buffer);
+
+    request_buffer_struct->method = method;
+    request_buffer_struct->target = target;
+    request_buffer_struct->http_version = http_version;
+    request_buffer_struct->host = host;
+    request_buffer_struct->user_agent = user_agent;
+    request_buffer_struct->body = body;
     // Use regex for user-agent, accept
-    regex_t regex;
-    const size_t n_match = 10;
+//    regex_t regex;
+//    const size_t n_match = 10;
     //int regex_comp_result = regcomp(&regex, "^GET", 0);
     //int regex_comp_result = regcomp(&regex, "^GET", REG_EXTENDED | REG_ICASE);
 
     //int regex_comp_method_result = regcomp(&regex, "GET|POST", REG_EXTENDED | REG_ICASE);
-    int regex_comp_method_result = regcomp(&regex, "GET|POST", REG_EXTENDED | REG_ICASE);
-    regmatch_t p_match[n_match + 1];
-    int regexec_method_result = regexec(&regex, request_buffer, n_match, p_match, 0);
-    if (regexec_method_result == 0) {
-	printf("LOG____PRB()____REGEX MATCH\n");
-	for (size_t i = 0; p_match[i].rm_so != -1 && i < n_match; i++) {
-	//int i = 0;
-	char regex_buffer[256] = {0};
-	    //strncpy(regex_buffer, request_buffer_pointer + p_match[i].rm_so, p_match[i].rm_eo - p_match[i].rm_so);
-	    strncpy(regex_buffer, request_buffer + p_match[i].rm_so, p_match[i].rm_eo - p_match[i].rm_so);
-	    printf("LOG____PRB()____REGEX start %d, end %d: %s\n", p_match[i].rm_so, p_match[i].rm_eo, regex_buffer);
-	}
-    }
-    regfree(&regex);
+//    int regex_comp_method_result = regcomp(&regex, "GET|POST", REG_EXTENDED | REG_ICASE);
+//    regmatch_t p_match[n_match + 1];
+//    int regexec_method_result = regexec(&regex, request_buffer, n_match, p_match, 0);
+//    if (regexec_method_result == 0) {
+//	printf("LOG____PRB()____REGEX MATCH\n");
+//	for (size_t i = 0; p_match[i].rm_so != -1 && i < n_match; i++) {
+//	//int i = 0;
+//	char regex_buffer[256] = {0};
+//	    //strncpy(regex_buffer, request_buffer_pointer + p_match[i].rm_so, p_match[i].rm_eo - p_match[i].rm_so);
+//	    strncpy(regex_buffer, request_buffer + p_match[i].rm_so, p_match[i].rm_eo - p_match[i].rm_so);
+//	    printf("LOG____PRB()____REGEX start %d, end %d: %s\n", p_match[i].rm_so, p_match[i].rm_eo, regex_buffer);
+//	}
+//    }
+//    regfree(&regex);
 
-    printf("LOG____PRB()____Request Buffer: %s\n", request_buffer);
+//    printf("LOG____PRB()____Request Buffer: %s\n", request_buffer);
     // Array Contents:
     // array[0] = request method
     // array[1] = request target
@@ -193,7 +201,7 @@ void handle_request(char request_buffer[1024], int client_fd) {
     struct buffer_struct request_buffer_struct;
     process_request_buffer(&request_buffer_struct, request_buffer_duplicate);
 
-    printf("LOG____Request Buffer Struct: %s\n", request_buffer);
+    //printf("LOG____Request Buffer Struct: %s\n", request_buffer);
     printf("LOG____Request Buffer Struct->method: %s\n", request_buffer_struct.method);
     printf("LOG____Request Buffer Struct->target: %s\n", request_buffer_struct.target);
     printf("LOG____Request Buffer Struct->http_version: %s\n", request_buffer_struct.http_version);
@@ -218,15 +226,13 @@ void handle_request(char request_buffer[1024], int client_fd) {
 	printf("LOG____Client DOES NOT Accept gzip\n");
 	content_encoding = "\r\n";
     }
-    printf("LOG____content_encoding_active = %d\n", content_encoding_active);
-    printf("LOG____content_encoding = %s\n", content_encoding);
+    //printf("LOG____content_encoding_active = %d\n", content_encoding_active);
+    //printf("LOG____content_encoding = %s\n", content_encoding);
 
     char* request_method = request_buffer_struct.method;	
     char* request_target = request_buffer_struct.target;	
 
     char* request_buffer_pointer = request_buffer;
-    strtok_r(request_buffer_pointer, " ", &request_buffer_pointer);
-    strtok_r(request_buffer_pointer, " ", &request_buffer_pointer);
 
     // Updated to use Empty Response Template
     if (!strcmp(request_target, "/")) {
@@ -249,18 +255,14 @@ void handle_request(char request_buffer[1024], int client_fd) {
 	    uLong gzip_body_length;
 	    char* gzip_response_body;
 	    gzip_response_body = gzip_deflate(echo_message, strlen(echo_message), &gzip_body_length);
-	    //sprintf(response_buffer, gzip_response_template, content_encoding, strlen(echo_message), echo_message);
 	    char* new_gzip_response_template  = "HTTP/1.1 200 OK\r\nContent-Encoding: gzip\r\nContent-Type: text/plain\r\nContent-Length: %zu\r\n\r\n";
 	    sprintf(response_buffer, new_gzip_response_template, gzip_body_length);
-	    printf("LOG____response_buffer With GZIP: %s\n", response_buffer);
 	    send(client_fd, response_buffer, strlen(response_buffer), no_flags);
 	    send(client_fd, gzip_response_body, gzip_body_length, no_flags);
 	}
     } 
     else if (!strcmp(request_target, "/user-agent")) {
-       	strtok_r(request_buffer_pointer, "\r\n", &request_buffer_pointer);
-       	strtok_r(request_buffer_pointer, "\r\n", &request_buffer_pointer);
-	char* user_agent = strtok_r(request_buffer_pointer, "\r\n", &request_buffer_pointer) + 12;
+	char* user_agent = request_buffer_struct.user_agent + 12;
 	sprintf(response_buffer, response_template, strlen(user_agent), user_agent);
 	send(client_fd, response_buffer, strlen(response_buffer), no_flags);
     }
@@ -296,13 +298,10 @@ void handle_request(char request_buffer[1024], int client_fd) {
 	    fclose(file_fd);
 	}
 	else if (!strcmp(request_method, "POST")) {
-	    strtok_r(request_buffer_pointer, "\r\n", &request_buffer_pointer);
-	    strtok_r(request_buffer_pointer, "\r\n", &request_buffer_pointer);
-	    char* request_body_length = strtok_r(request_buffer_pointer, "\r\n", &request_buffer_pointer);
-	    printf("LOG___Request Body Length: %s\n", request_body_length + 16);
-	    strtok_r(request_buffer_pointer, "\r\n", &request_buffer_pointer);
-	    char* request_body = strtok_r(request_buffer_pointer, "\r\n", &request_buffer_pointer);
-	    printf("LOG___Request Body: %s\n", request_body);
+	    printf("LOG____Request Body Length: %s\n", request_buffer_struct.user_agent + 16);
+	    char* request_body = request_buffer_struct.body;
+	    printf("LOG____Request Body: %s\n", request_body);
+
 	    // i'm thinking either FILE *file_fd = fopen(file_path, "r"); above is not the best name, or this below isn't, will look into it
 	    FILE *file_pointer = fopen(file_path, "w");
 	    fprintf(file_pointer, request_body);
